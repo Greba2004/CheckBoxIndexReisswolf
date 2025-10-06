@@ -1,0 +1,291 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Windows.Forms;
+using CheckBoXIndexAPP.Modeli;
+using CheckBoXIndexAPP.Servisi;
+using CheckBoXIndexAPP.Services;
+
+namespace CheckBoXIndexAPP.Forms
+{
+    public partial class MainForma : Form
+    {
+        private readonly string inputPath;
+        private readonly string outputPath;
+        private readonly string imeOperatera;
+
+        // Servisi
+        private ConfigExcelServis configServis;
+        private CsvServis csvServis;
+        private PdfService pdfService;
+        private IzvestajServis izvestajServis;
+        private DataValidationService validationServis;
+
+        // Podaci
+        private List<CheckBoxConfig> configData;
+        private List<InputPdfFile> pdfFajloviZajednicki = new List<InputPdfFile>();
+
+        // putanje u AppData
+        private string configExcelPath;
+        private string csvTempPath;
+
+        public MainForma()
+        {
+            InitializeComponent();
+        }
+
+        public MainForma(string inputPath, string outputPath, string imeOperatera) : this()
+        {
+            this.inputPath = inputPath ?? "";
+            this.outputPath = outputPath ?? "";
+            this.imeOperatera = imeOperatera ?? "";
+
+            lblPdfNaziv.Text = "Naziv PDF fajla: (nije učitan)";
+
+            // učitaj config Excel
+            configExcelPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.xlsx");
+            if (File.Exists(configExcelPath))
+            {
+                configServis = new ConfigExcelServis(configExcelPath);
+
+                try
+                {
+                    configData = configServis.UcitajCheckBoxKonfiguraciju();
+                    KreirajCheckBoxove(configData);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Greška pri učitavanju konfiguracije: {ex.Message}");
+                    configData = new List<CheckBoxConfig>();
+                }
+            }
+            else
+            {
+                MessageBox.Show("Konfiguracioni fajl 'config.xlsx' nije pronađen u folderu aplikacije!");
+                configData = new List<CheckBoxConfig>();
+            }
+        }
+
+        private void MainForma_Load(object sender, EventArgs e)
+        {
+            try
+            {
+                // --- Folder u ProgramData ---
+                string appDataFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "IndexPDF"
+                );
+                if (!Directory.Exists(appDataFolder))
+                    Directory.CreateDirectory(appDataFolder);
+
+                string folderProjekta = AppDomain.CurrentDomain.BaseDirectory;
+                configExcelPath = Path.Combine(folderProjekta, "config.xlsx");
+                csvTempPath = Path.Combine(folderProjekta, "podaci_temp.csv");
+
+                // Inicijalizuj servise
+                configServis = new ConfigExcelServis(configExcelPath);
+                csvServis = new CsvServis(csvTempPath, outputPath);
+                pdfService = new PdfService();
+                validationServis = new DataValidationService();
+
+                // Ucitaj konfiguraciju iz Excel fajla
+                if (File.Exists(configExcelPath))
+                {
+                    try
+                    {
+                        configData = configServis.UcitajCheckBoxKonfiguraciju();
+                        KreirajCheckBoxove(configData);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Greška pri učitavanju konfiguracije: " + ex.Message, "Greška", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        configData = new List<CheckBoxConfig>();
+                    }
+                }
+                else
+                {
+                    MessageBox.Show($"Nije pronađen config fajl (config.xlsx) u folderu:\n{configExcelPath}\nNastavljam bez njega.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    configData = new List<CheckBoxConfig>();
+                }
+
+                // Ucitaj CSV prethodnih podataka
+                try
+                {
+                    var ucitani = csvServis.UcitajPodatkeIzCsv();
+                    pdfFajloviZajednicki = ucitani;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Greška pri učitavanju CSV-a: " + ex.Message, "Greška", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+
+                // Ucitaj PDF fajlove
+                pdfService.UcitajPdfFajlove(this.inputPath);
+
+                if (pdfService.PdfFajlovi != null && pdfService.PdfFajlovi.Any())
+                {
+                    AzurirajUIPoslePromeneFajla();
+                    pdfService.PrikaziTrenutniFajl(this.pdfPanel);
+                }
+                else
+                {
+                    lblPdfNaziv.Text = "Nema PDF fajlova u input folderu";
+                }
+
+                // Kreiraj ConfigData objekat za izveštaj
+                var configDataModel = new ConfigData
+                {
+                    CheckBoxovi = configData
+                };
+
+                izvestajServis = new IzvestajServis(outputPath, imeOperatera, configDataModel, pdfFajloviZajednicki);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Greška pri startu forme: " + ex.Message, "Greška", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // Dinamičko kreiranje checkboxova iz konfiguracije
+        private void KreirajCheckBoxove(List<CheckBoxConfig> konfiguracija)
+        {
+            panelCheckBoxovi.Controls.Clear();
+
+            int y = 10;
+            foreach (var cfg in konfiguracija)
+            {
+                var cb = new CheckBox
+                {
+                    Text = cfg.Naziv + (cfg.Obavezno ? " *" : ""),
+                    Tag = cfg.Id,
+                    AutoSize = true,
+                    Location = new System.Drawing.Point(10, y),
+                    Font = new System.Drawing.Font("Segoe UI", 10F)
+                };
+
+                if (cfg.Obavezno)
+                    cb.ForeColor = System.Drawing.Color.DarkRed;
+
+                panelCheckBoxovi.Controls.Add(cb);
+                y += 30;
+            }
+        }
+
+        private void AzurirajUIPoslePromeneFajla()
+        {
+            var trenutni = pdfService.TrenutniPdf;
+            if (trenutni != null)
+            {
+                lblPdfNaziv.Text = trenutni.FileName;
+                chkMenjajNaziv.Checked = false;
+                txtNoviNaziv.Text = trenutni.NewFileName ?? trenutni.FileName;
+            }
+            else
+            {
+                lblPdfNaziv.Text = "Nema fajla";
+            }
+
+            txtOpis.Visible = false;
+            txtNapomena.Visible = false;
+            btnSledeciUnos.Visible = false;
+            cmbNaziviPolja.Enabled = true;
+        }
+
+        private void btnPrethodni_Click(object sender, EventArgs e)
+        {
+            pdfService.PredjiNaPrethodniFajl();
+            pdfService.PrikaziTrenutniFajl(this.pdfPanel);
+            AzurirajUIPoslePromeneFajla();
+        }
+
+        private void btnSledeci_Click(object sender, EventArgs e)
+        {
+            pdfService.PredjiNaSledeciFajl();
+            pdfService.PrikaziTrenutniFajl(this.pdfPanel);
+            AzurirajUIPoslePromeneFajla();
+        }
+
+        private void btnIzvestaj_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                var configDataModel = new ConfigData
+                {
+                    CheckBoxovi = configData
+                };
+
+                izvestajServis = new IzvestajServis(outputPath, imeOperatera, configDataModel, pdfFajloviZajednicki);
+                izvestajServis.GenerisiIzvestajExcel();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Greška generisanja izveštaja: " + ex.Message, "Greška", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnSacuvajPredji_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                var trenutni = pdfService.TrenutniPdf;
+                if (trenutni == null) return;
+
+                if (chkMenjajNaziv.Checked && !string.IsNullOrWhiteSpace(txtNoviNaziv.Text))
+                {
+                    var novi = txtNoviNaziv.Text.Trim();
+                    if (novi.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                        novi = novi.Substring(0, novi.Length - 4);
+                    trenutni.NewFileName = novi;
+                }
+                else
+                {
+                    trenutni.NewFileName = trenutni.FileName;
+                }
+
+                trenutni.DatumObrade = DateTime.Now;
+
+                if (!pdfFajloviZajednicki.Any(p => p.OriginalPath == trenutni.OriginalPath))
+                    pdfFajloviZajednicki.Add(trenutni);
+
+                pdfService.PremestiTrenutniPdfUFolder(outputPath);
+                csvServis.SacuvajPodatkeUCsv(pdfFajloviZajednicki, imeOperatera);
+
+                pdfService.PredjiNaSledeciFajl();
+                if (pdfService.TrenutniPdf != null)
+                {
+                    pdfService.PrikaziTrenutniFajl(this.pdfPanel);
+                    AzurirajUIPoslePromeneFajla();
+                }
+                else
+                {
+                    lblPdfNaziv.Text = "Nema više fajlova";
+                    txtOpis.Visible = false;
+                    txtNapomena.Visible = false;
+                    btnSledeciUnos.Visible = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Greška pri čuvanju i prelasku: " + ex.Message, "Greška", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void chkMenjajNaziv_CheckedChanged(object sender, EventArgs e)
+        {
+            txtNoviNaziv.Visible = chkMenjajNaziv.Checked;
+            if (chkMenjajNaziv.Checked)
+                txtNoviNaziv.Focus();
+        }
+
+        private void MainForma_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            try
+            {
+                csvServis.SacuvajPodatkeUCsv(pdfFajloviZajednicki, imeOperatera);
+                pdfService.OslobodiSvePdfResurse();
+            }
+            catch { }
+        }
+    }
+}
