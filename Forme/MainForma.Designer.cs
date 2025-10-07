@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
-using PdfiumViewer;
 
 namespace CheckBoXIndexAPP.Forms
 {
@@ -12,35 +11,36 @@ namespace CheckBoXIndexAPP.Forms
         protected override void Dispose(bool disposing)
         {
             if (disposing && (components != null))
-            {
                 components.Dispose();
-            }
             base.Dispose(disposing);
         }
 
-        #region Designer generated
+        #region Designer generated code
 
         private void InitializeComponent()
         {
             this.components = new System.ComponentModel.Container();
 
-            // SplitContainer
+            // Glavni SplitContainer
             this.splitContainer1 = new SplitContainer();
             this.splitContainer1.Dock = DockStyle.Fill;
+            this.splitContainer1.Orientation = Orientation.Vertical;
+            this.splitContainer1.SplitterDistance = 450;
 
-            // Left Table (3 rows)
+            // Leva strana
             this.leftTable = new TableLayoutPanel();
             this.leftTable.ColumnCount = 1;
             this.leftTable.RowCount = 3;
             this.leftTable.Dock = DockStyle.Fill;
             this.leftTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 18F)); // Top
-            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 57F)); // Middle
-            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 25F)); // Bottom
+            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 18F));
+            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 57F));
+            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
 
-            // Top panel
+            // Gornji panel
             this.topPanel = new Panel();
             this.topPanel.Dock = DockStyle.Fill;
+            this.topPanel.Padding = new Padding(10);
 
             this.lblPdfNaziv = new Label();
             this.lblPdfNaziv.Dock = DockStyle.Top;
@@ -65,23 +65,36 @@ namespace CheckBoXIndexAPP.Forms
             this.topPanel.Controls.Add(this.chkMenjajNaziv);
             this.topPanel.Controls.Add(this.lblPdfNaziv);
 
-            // Middle panel
+            // Srednji panel
             this.middlePanel = new Panel();
             this.middlePanel.Dock = DockStyle.Fill;
 
-            // Panel za check boxove (scrollable)
+            // TableLayoutPanel za middlePanel (filter + razmak + checkboxovi + unos)
+            TableLayoutPanel middleTable = new TableLayoutPanel();
+            middleTable.Dock = DockStyle.Fill;
+            middleTable.RowCount = 4;
+            middleTable.ColumnCount = 1;
+            middleTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F)); // filter panel
+            middleTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 10F)); // razmak
+            middleTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // checkbox panel
+            middleTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 120F)); // input panel
+            middleTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
+            // Filter panel
+            this.filterPanel = new Panel();
+            this.filterPanel.Dock = DockStyle.Fill;
+            this.filterPanel.Padding = new Padding(10, 5, 10, 5);
+
+            // Panel sa checkboxovima
             this.panelCheckBoxovi = new Panel();
-            this.panelCheckBoxovi.Dock = DockStyle.Top;
-            this.panelCheckBoxovi.Height = 150;
+            this.panelCheckBoxovi.Dock = DockStyle.Fill;
             this.panelCheckBoxovi.AutoScroll = true;
 
-            // ComboBox za nazive polja
-            this.cmbNaziviPolja = new ComboBox();
-            this.cmbNaziviPolja.Dock = DockStyle.Top;
-            this.cmbNaziviPolja.Height = 36;
-            this.cmbNaziviPolja.DropDownStyle = ComboBoxStyle.DropDownList;
+            // Input panel
+            Panel inputPanel = new Panel();
+            inputPanel.Dock = DockStyle.Fill;
+            inputPanel.Padding = new Padding(5);
 
-            // TextBox za opis i napomenu
             this.txtOpis = new TextBox();
             this.txtOpis.Dock = DockStyle.Top;
             this.txtOpis.Height = 36;
@@ -93,24 +106,27 @@ namespace CheckBoXIndexAPP.Forms
             this.txtNapomena.Height = 36;
             this.txtNapomena.PlaceholderText = "Napomena...";
             this.txtNapomena.Visible = false;
+            this.txtNapomena.KeyDown += new KeyEventHandler(this.txtNapomena_KeyDown);
 
-            // Dugme sledeći unos
             this.btnSledeciUnos = new Button();
-            this.btnSledeciUnos.Dock = DockStyle.Top;
+            this.btnSledeciUnos.Dock = DockStyle.Bottom;
             this.btnSledeciUnos.Height = 44;
             this.btnSledeciUnos.Text = "Sledeći unos (Enter)";
-            styleBigButton(this.btnSledeciUnos);
+            StyleBigButton(this.btnSledeciUnos);
             this.btnSledeciUnos.Visible = false;
-            this.btnSledeciUnos.Click += new EventHandler(this.btnSacuvajPredji_Click);
+            this.btnSledeciUnos.Click += new EventHandler(this.btnSledeciUnos_Click);
 
-            // Dodaj kontrole u middle panel
-            this.middlePanel.Controls.Add(this.btnSledeciUnos);
-            this.middlePanel.Controls.Add(this.txtNapomena);
-            this.middlePanel.Controls.Add(this.txtOpis);
-            this.middlePanel.Controls.Add(this.cmbNaziviPolja);
-            this.middlePanel.Controls.Add(this.panelCheckBoxovi);
+            inputPanel.Controls.Add(this.btnSledeciUnos);
+            inputPanel.Controls.Add(this.txtNapomena);
+            inputPanel.Controls.Add(this.txtOpis);
 
-            // Bottom panel (2x2 buttons)
+            middleTable.Controls.Add(this.filterPanel, 0, 0);
+            middleTable.Controls.Add(this.panelCheckBoxovi, 0, 2);
+            middleTable.Controls.Add(inputPanel, 0, 3);
+
+            this.middlePanel.Controls.Add(middleTable);
+
+            // Donji panel
             this.bottomPanel = new TableLayoutPanel();
             this.bottomPanel.ColumnCount = 2;
             this.bottomPanel.RowCount = 2;
@@ -126,22 +142,22 @@ namespace CheckBoXIndexAPP.Forms
             this.btnIzvestaj = new Button();
             this.btnSacuvajPredji = new Button();
 
-            styleBigButton(this.btnPrethodni);
+            StyleBigButton(this.btnPrethodni);
             this.btnPrethodni.Text = "⟵ Prethodni";
             this.btnPrethodni.Dock = DockStyle.Fill;
             this.btnPrethodni.Click += new EventHandler(this.btnPrethodni_Click);
 
-            styleBigButton(this.btnSledeci);
+            StyleBigButton(this.btnSledeci);
             this.btnSledeci.Text = "Sledeći ⟶";
             this.btnSledeci.Dock = DockStyle.Fill;
             this.btnSledeci.Click += new EventHandler(this.btnSledeci_Click);
 
-            styleBigButton(this.btnIzvestaj);
+            StyleBigButton(this.btnIzvestaj);
             this.btnIzvestaj.Text = "Izveštaj";
             this.btnIzvestaj.Dock = DockStyle.Fill;
             this.btnIzvestaj.Click += new EventHandler(this.btnIzvestaj_Click);
 
-            styleBigButton(this.btnSacuvajPredji);
+            StyleBigButton(this.btnSacuvajPredji);
             this.btnSacuvajPredji.Text = "Sačuvaj i pređi";
             this.btnSacuvajPredji.Dock = DockStyle.Fill;
             this.btnSacuvajPredji.Click += new EventHandler(this.btnSacuvajPredji_Click);
@@ -151,50 +167,43 @@ namespace CheckBoXIndexAPP.Forms
             this.bottomPanel.Controls.Add(this.btnIzvestaj, 0, 1);
             this.bottomPanel.Controls.Add(this.btnSacuvajPredji, 1, 1);
 
-            // PDF Panel
+            // Desni panel
             this.pdfPanel = new Panel();
             this.pdfPanel.Dock = DockStyle.Fill;
+            this.pdfPanel.BackColor = Color.DarkGray;
 
-            this.pdfViewer = new PdfiumViewer.PdfViewer();
-            this.pdfViewer.Dock = DockStyle.Fill;
-            this.pdfPanel.Controls.Add(this.pdfViewer);
+            // Povezivanje layouta
+            this.splitContainer1.Panel1.Controls.Add(this.leftTable);
+            this.splitContainer1.Panel2.Controls.Add(this.pdfPanel);
 
-            // Assemble leftTable
             this.leftTable.Controls.Add(this.topPanel, 0, 0);
             this.leftTable.Controls.Add(this.middlePanel, 0, 1);
             this.leftTable.Controls.Add(this.bottomPanel, 0, 2);
 
-            // SplitContainer Panels
-            this.splitContainer1.Panel1.Controls.Add(this.leftTable);
-            this.splitContainer1.Panel2.Controls.Add(this.pdfPanel);
-
-            // Main form
-            this.ClientSize = new Size(1200, 800);
+            // Glavna forma
+            this.ClientSize = new Size(1100, 700);
             this.Controls.Add(this.splitContainer1);
-            this.Text = "CheckBox Index APP - Nova Forma";
-            this.WindowState = FormWindowState.Maximized;
+            this.Text = "CheckBox Index APP";
+            this.FormClosing += new FormClosingEventHandler(this.MainForma_FormClosing);
             this.Load += new EventHandler(this.MainForma_Load);
+        }
+
+        private void StyleBigButton(Button btn)
+        {
+            btn.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+            btn.BackColor = Color.LightSteelBlue;
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.Height = 44;
+            btn.Margin = new Padding(5);
         }
 
         #endregion
 
-        #region Helpers & Fields
-
-        private void styleBigButton(Button btn)
-        {
-            btn.BackColor = Color.MidnightBlue;
-            btn.ForeColor = Color.White;
-            btn.FlatStyle = FlatStyle.Flat;
-            btn.FlatAppearance.BorderSize = 0;
-            btn.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
-            btn.Margin = new Padding(8);
-        }
-
+        // Deklaracije kontrola
         private SplitContainer splitContainer1;
         private TableLayoutPanel leftTable;
         private Panel topPanel;
         private Panel middlePanel;
-        private Panel panelCheckBoxovi;
         private TableLayoutPanel bottomPanel;
         private Panel pdfPanel;
 
@@ -202,7 +211,8 @@ namespace CheckBoXIndexAPP.Forms
         private CheckBox chkMenjajNaziv;
         private TextBox txtNoviNaziv;
 
-        private ComboBox cmbNaziviPolja;
+        private Panel filterPanel;
+        private Panel panelCheckBoxovi;
         private TextBox txtOpis;
         private TextBox txtNapomena;
         private Button btnSledeciUnos;
@@ -211,9 +221,5 @@ namespace CheckBoXIndexAPP.Forms
         private Button btnSledeci;
         private Button btnIzvestaj;
         private Button btnSacuvajPredji;
-
-        private PdfiumViewer.PdfViewer pdfViewer;
-
-        #endregion
     }
 }

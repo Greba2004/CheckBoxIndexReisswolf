@@ -29,11 +29,11 @@ namespace CheckBoXIndexAPP.Servisi
                     .Where(p => File.Exists(p.OriginalPath) && p.OriginalPath.StartsWith(outputFolderPath))
                     .ToList();
 
-                using (var writer = new StreamWriter(csvPath, false)) // overwrite
+                using (var writer = new StreamWriter(csvPath, false))
                 {
                     foreach (var pdf in pdfZaCuvanje)
                     {
-                        // Merge logika: sve unose spajamo u jedan string sa | separatorom
+                        // Merge logika: spajanje svih unosa
                         var poljaString = pdf.PoljaUnosi
                             .Select(u => $"{u.NazivPolja}|{u.Opis}|{u.Napomena}")
                             .ToArray();
@@ -85,7 +85,7 @@ namespace CheckBoXIndexAPP.Servisi
                             var deloviUnosa = unosStr.Split('|');
                             if (deloviUnosa.Length == 3)
                             {
-                                pdf.PoljaUnosi.Add(new UnosNovaApp
+                                pdf.DodajUnos(new UnosNovaApp
                                 {
                                     NazivPolja = deloviUnosa[0],
                                     Opis = deloviUnosa[1],
