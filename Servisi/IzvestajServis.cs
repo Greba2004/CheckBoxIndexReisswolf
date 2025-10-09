@@ -1,118 +1,133 @@
-﻿using ClosedXML.Excel;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Windows.Forms;
-using CheckBoXIndexAPP.Modeli;
+﻿using CheckBoXIndexAPP.Modeli;
+using ClosedXML.Excel;
 
-namespace CheckBoXIndexAPP.Servisi
+public class IzvestajServis
 {
-    public class IzvestajServis
+    private readonly string outputFolderPath;
+    private readonly string operatorName;
+    private readonly ConfigData configData;
+    private readonly List<InputPdfFile> pdfFajloviTrenutneSesije;
+    private readonly DateTime sessionStartTime;
+
+    public IzvestajServis(
+        string outputFolderPath,
+        string operatorName,
+        ConfigData configData,
+        List<InputPdfFile> pdfFajloviTrenutneSesije,
+        DateTime? sessionStartTime = null) // <-- optional
     {
-        private readonly string outputFolderPath;
-        private readonly string operatorName;
-        private readonly ConfigData configData;
-        private readonly List<InputPdfFile> pdfFajloviZajednicki;
+        this.outputFolderPath = outputFolderPath;
+        this.operatorName = operatorName;
+        this.configData = configData;
+        this.pdfFajloviTrenutneSesije = pdfFajloviTrenutneSesije;
+        this.sessionStartTime = sessionStartTime ?? DateTime.MinValue;
+    }
 
-        public IzvestajServis(
-            string outputFolderPath,
-            string operatorName,
-            ConfigData configData,
-            List<InputPdfFile> pdfFajloviZajednicki)
+    public void GenerisiIzvestajExcel()
+    {
+        try
         {
-            this.outputFolderPath = outputFolderPath;
-            this.operatorName = operatorName;
-            this.configData = configData;
-            this.pdfFajloviZajednicki = pdfFajloviZajednicki;
-        }
+            var trenutniFajlovi = pdfFajloviTrenutneSesije
+                .Where(p => p.DatumObrade >= sessionStartTime)
+                .ToList();
 
-        public void GenerisiIzvestajExcel()
-        {
-            try
+            if (trenutniFajlovi.Count == 0)
             {
-                var workbookPath = Path.Combine(outputFolderPath, "izvestaj.xlsx");
+                MessageBox.Show("Nema PDF fajlova koji su obrađeni u ovoj sesiji.",
+                    "Obaveštenje", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
 
-                string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
-                string archiveFolder = Path.Combine(appDirectory, "SviIzvestaji");
-                if (!Directory.Exists(archiveFolder))
-                    Directory.CreateDirectory(archiveFolder);
+            var workbookPath = Path.Combine(outputFolderPath, "izvestaj.xlsx");
 
-                var workbook = new XLWorkbook();
-                var worksheet = workbook.AddWorksheet("Izvestaj");
+            string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string archiveFolder = Path.Combine(appDirectory, "SviIzvestaji");
+            if (!Directory.Exists(archiveFolder))
+                Directory.CreateDirectory(archiveFolder);
 
-                int red = 1;
+            var workbook = new XLWorkbook();
+            var worksheet = workbook.AddWorksheet("Izvestaj");
 
-                // --- HEADER ---
-                int kolona = 1;
-                worksheet.Cell(red, kolona++).Value = "Stari naziv fajla";
-                worksheet.Cell(red, kolona++).Value = "Novi naziv fajla";
+            int red = 1;
+            int kolona = 1;
 
-                // Za svaki check box dodajemo Naziv - Opis - Napomena
-                foreach (var cb in configData.CheckBoxovi)
+            // --- HEADER ---
+            worksheet.Cell(red, kolona++).Value = "Stari naziv fajla";
+            worksheet.Cell(red, kolona++).Value = "Novi naziv fajla";
+
+            int maxUnosa = trenutniFajlovi
+                .Where(p => p.PoljaUnosi != null)
+                .Select(p => p.PoljaUnosi.Count)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            for (int i = 1; i <= maxUnosa; i++)
+            {
+                worksheet.Cell(red, kolona++).Value = $"Naziv {i}";
+                worksheet.Cell(red, kolona++).Value = $"Napomena {i}";
+                worksheet.Cell(red, kolona++).Value = $"Opis {i}";
+            }
+
+            worksheet.Cell(red, kolona++).Value = "Datum obrade";
+            worksheet.Cell(red, kolona).Value = "Operater";
+            red++;
+
+            // --- PODACI ---
+            foreach (var pdf in trenutniFajlovi)
+            {
+                kolona = 1;
+                worksheet.Cell(red, kolona++).Value = pdf.FileName;
+                worksheet.Cell(red, kolona++).Value = string.IsNullOrWhiteSpace(pdf.NewFileName)
+                    ? pdf.FileName
+                    : pdf.NewFileName;
+
+                if (pdf.PoljaUnosi != null && pdf.PoljaUnosi.Count > 0)
                 {
-                    worksheet.Cell(red, kolona++).Value = cb.Naziv + " - Opis";
-                    worksheet.Cell(red, kolona++).Value = cb.Naziv + " - Napomena";
-                }
-
-                worksheet.Cell(red, kolona).Value = "Ime operatera"; // poslednja kolona
-                red++;
-
-                // --- PODACI ---
-                foreach (var pdf in pdfFajloviZajednicki)
-                {
-                    kolona = 1;
-                    worksheet.Cell(red, kolona++).Value = pdf.FileName;
-                    worksheet.Cell(red, kolona++).Value = string.IsNullOrWhiteSpace(pdf.NewFileName) ? pdf.FileName : pdf.NewFileName;
-
-                    // Merge logika: ako je isti naziv polja više puta, spajamo Opis i Napomenu
-                    var unosi = pdf.PoljaUnosi;
-                    if (unosi != null && unosi.Count > 0)
+                    foreach (var unos in pdf.PoljaUnosi)
                     {
-                        // Grupisanje po NazivPolja
-                        var grupisani = unosi.GroupBy(u => u.NazivPolja);
-                        foreach (var grupa in grupisani)
-                        {
-                            string naziv = grupa.Key;
-                            string opis = string.Join(" | ", grupa.Select(x => x.Opis));
-                            string napomena = string.Join(" | ", grupa.Select(x => x.Napomena));
-
-                            worksheet.Cell(red, kolona++).Value = naziv;
-                            worksheet.Cell(red, kolona++).Value = opis;
-                            worksheet.Cell(red, kolona++).Value = napomena;
-                        }
+                        worksheet.Cell(red, kolona++).Value = unos.NazivPolja;
+                        worksheet.Cell(red, kolona++).Value = unos.Napomena;
+                        worksheet.Cell(red, kolona++).Value = unos.Opis;
                     }
-
-                    red++;
                 }
 
-                // Ime operatera samo u poslednjem redu poslednje kolone
-                if (red > 2)
+                int praznih = maxUnosa - (pdf.PoljaUnosi?.Count ?? 0);
+                for (int i = 0; i < praznih; i++)
                 {
-                    worksheet.Cell(red - 1, kolona).Value = operatorName;
+                    worksheet.Cell(red, kolona++).Value = "";
+                    worksheet.Cell(red, kolona++).Value = "";
+                    worksheet.Cell(red, kolona++).Value = "";
                 }
 
-                worksheet.Columns().AdjustToContents();
-                workbook.SaveAs(workbookPath);
+                worksheet.Cell(red, kolona++).Value = pdf.DatumObrade.ToString("yyyy-MM-dd HH:mm:ss");
+                worksheet.Cell(red, kolona).Value = operatorName;
 
-                string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                string archiveFileName = $"Izvestaj_{timestamp}.xlsx";
-                string archiveFilePath = Path.Combine(archiveFolder, archiveFileName);
-                workbook.SaveAs(archiveFilePath);
-
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = workbookPath,
-                    UseShellExecute = true
-                });
-
-                MessageBox.Show($"Izveštaj je uspešno generisan i otvoren.\nKopija je sačuvana u folderu 'SviIzvestaji'.",
-                                "Uspeh", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                red++;
             }
-            catch (Exception ex)
+
+            worksheet.Columns().AdjustToContents();
+            workbook.SaveAs(workbookPath);
+
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string archiveFileName = $"Izvestaj_{timestamp}.xlsx";
+            string archiveFilePath = Path.Combine(archiveFolder, archiveFileName);
+            workbook.SaveAs(archiveFilePath);
+
+            MessageBox.Show($"Izveštaj za trenutnu sesiju je uspešno generisan.\nKopija je sačuvana u folderu 'SviIzvestaji'.",
+                "Uspeh", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                MessageBox.Show("Greška pri generisanju izveštaja: " + ex.Message, "Greška", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+                FileName = workbookPath,
+                UseShellExecute = true
+            });
+
+            // Application.Exit(); // <-- preporučujem da ga ukloniš ili da ga pozivaš iz UI samo po potrebi
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Greška pri generisanju izveštaja: " + ex.Message,
+                "Greška", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 }

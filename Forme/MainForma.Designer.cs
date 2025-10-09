@@ -33,9 +33,9 @@ namespace CheckBoXIndexAPP.Forms
             this.leftTable.RowCount = 3;
             this.leftTable.Dock = DockStyle.Fill;
             this.leftTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 18F));
-            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 57F));
-            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
+            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 18F)); // top panel
+            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 57F)); // middle panel
+            this.leftTable.RowStyles.Add(new RowStyle(SizeType.Percent, 25F)); // bottom panel
 
             // Gornji panel
             this.topPanel = new Panel();
@@ -69,15 +69,16 @@ namespace CheckBoXIndexAPP.Forms
             this.middlePanel = new Panel();
             this.middlePanel.Dock = DockStyle.Fill;
 
-            // TableLayoutPanel za middlePanel (filter + razmak + checkboxovi + unos)
+            // TableLayoutPanel za srednji panel
             TableLayoutPanel middleTable = new TableLayoutPanel();
             middleTable.Dock = DockStyle.Fill;
-            middleTable.RowCount = 4;
+            middleTable.RowCount = 5;
             middleTable.ColumnCount = 1;
-            middleTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F)); // filter panel
+            middleTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 45F)); // filter
             middleTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 10F)); // razmak
-            middleTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // checkbox panel
-            middleTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 120F)); // input panel
+            middleTable.RowStyles.Add(new RowStyle(SizeType.Percent, 70F)); // checkbox panel
+            middleTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 10F)); // razmak
+            middleTable.RowStyles.Add(new RowStyle(SizeType.Percent, 30F)); // input panel
             middleTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
 
             // Filter panel
@@ -100,12 +101,14 @@ namespace CheckBoXIndexAPP.Forms
             this.txtOpis.Height = 36;
             this.txtOpis.PlaceholderText = "Opis...";
             this.txtOpis.Visible = false;
+            this.txtOpis.TabIndex = 0;
 
             this.txtNapomena = new TextBox();
             this.txtNapomena.Dock = DockStyle.Top;
             this.txtNapomena.Height = 36;
             this.txtNapomena.PlaceholderText = "Napomena...";
             this.txtNapomena.Visible = false;
+            this.txtNapomena.TabIndex = 1;
             this.txtNapomena.KeyDown += new KeyEventHandler(this.txtNapomena_KeyDown);
 
             this.btnSledeciUnos = new Button();
@@ -114,6 +117,7 @@ namespace CheckBoXIndexAPP.Forms
             this.btnSledeciUnos.Text = "Sledeći unos (Enter)";
             StyleBigButton(this.btnSledeciUnos);
             this.btnSledeciUnos.Visible = false;
+            this.btnSledeciUnos.TabIndex = 2;
             this.btnSledeciUnos.Click += new EventHandler(this.btnSledeciUnos_Click);
 
             inputPanel.Controls.Add(this.btnSledeciUnos);
@@ -122,7 +126,7 @@ namespace CheckBoXIndexAPP.Forms
 
             middleTable.Controls.Add(this.filterPanel, 0, 0);
             middleTable.Controls.Add(this.panelCheckBoxovi, 0, 2);
-            middleTable.Controls.Add(inputPanel, 0, 3);
+            middleTable.Controls.Add(inputPanel, 0, 4);
 
             this.middlePanel.Controls.Add(middleTable);
 
