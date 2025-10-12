@@ -165,6 +165,22 @@ namespace CheckBoXIndexAPP.Forms
         {
             string filter = txtFilter.Text.Trim().ToLower();
 
+            // Ako je samo broj, pokušaj automatski da pronađe i čekira taj ID
+            if (int.TryParse(filter, out int brojId))
+            {
+                foreach (Control ctrl in panelCheckBoxovi.Controls)
+                {
+                    if (ctrl is CheckBox cb && cb.Tag?.ToString() == brojId.ToString())
+                    {
+                        cb.Checked = true;
+                        txtFilter.Clear();
+                        txtOpis.Focus();
+                        return; // ne treba dalje filtrirati
+                    }
+                }
+            }
+
+            // Klasično filtriranje po nazivu/ID-u
             foreach (Control ctrl in panelCheckBoxovi.Controls)
             {
                 if (ctrl is CheckBox cb)
@@ -247,7 +263,7 @@ namespace CheckBoXIndexAPP.Forms
             string opis = txtOpis.Text.Trim();
             string napomena = txtNapomena.Text.Trim();
 
-            // Ako je polje obavezno, ne dozvoli prelazak bez opisa ili napomene
+            // Provera obaveznih polja
             var obaveznaPolja = configData
                 .Where(c => c.Obavezno)
                 .Select(c => c.Naziv)
@@ -262,7 +278,6 @@ namespace CheckBoXIndexAPP.Forms
                 return;
             }
 
-            // Ako ništa nije upisano, nema potrebe da se dodaje
             if (string.IsNullOrWhiteSpace(opis) && string.IsNullOrWhiteSpace(napomena))
             {
                 MessageBox.Show("Morate uneti opis ili napomenu pre nego što pređete na sledeći unos.",
@@ -270,22 +285,42 @@ namespace CheckBoXIndexAPP.Forms
                 return;
             }
 
-            // Dodaj novi unos
-            unosPodaci.Add(new UnosNovaApp
+            // Dohvati ID polja iz konfiguracije
+            int idPolja = configData.FirstOrDefault(c => c.Naziv == naziv)?.Id ?? 0;
+
+            var noviUnos = new UnosNovaApp
             {
+                IdPolja = idPolja,
                 NazivPolja = naziv,
                 Opis = opis,
                 Napomena = napomena
-            });
+            };
+
+            // Dodaj u privremenu listu i odmah u trenutni PDF
+            unosPodaci.Add(noviUnos);
+            pdfService.TrenutniPdf?.DodajUnos(noviUnos);
 
             // Resetuj UI
             selektovaniCheckBox.Checked = false;
             selektovaniCheckBox = null;
             txtOpis.Clear();
             txtNapomena.Clear();
+            txtFilter.Clear();
             txtOpis.Visible = false;
             txtNapomena.Visible = false;
             btnSledeciUnos.Visible = false;
+
+            // 🔹 Novi deo: prelazak na sledeću stranicu PDF-a
+            if (pdfService.TrenutniPdf != null && pdfService.ImaJosStranica())
+            {
+                pdfService.PredjiNaSledecuStranicu();
+
+                // Prikaz nove stranice u panelu
+                if (pdfService.PdfViewerInstance != null)
+                {
+                    pdfService.PdfViewerInstance.Renderer.Page = pdfService.TrenutnaStranica - 1;
+                }
+            }
         }
 
         private void txtNapomena_KeyDown(object sender, KeyEventArgs e)
@@ -344,7 +379,6 @@ namespace CheckBoXIndexAPP.Forms
                 MessageBox.Show("Greška generisanja izveštaja: " + ex.Message);
             }
         }
-
         private void btnSacuvajPredji_Click(object sender, EventArgs e)
         {
             try
@@ -352,7 +386,7 @@ namespace CheckBoXIndexAPP.Forms
                 var trenutni = pdfService.TrenutniPdf;
                 if (trenutni == null) return;
 
-                // Ako postoji aktivan unos koji još nije dodat, dodaj ga pre provere
+                // 🔹 Dodaj aktivni unos ako postoji
                 if (selektovaniCheckBox != null &&
                     (!string.IsNullOrWhiteSpace(txtOpis.Text) || !string.IsNullOrWhiteSpace(txtNapomena.Text)))
                 {
@@ -360,14 +394,20 @@ namespace CheckBoXIndexAPP.Forms
                     if (nazivPolja.EndsWith(" *"))
                         nazivPolja = nazivPolja.Substring(0, nazivPolja.Length - 2);
 
+                    int idPolja = configData.FirstOrDefault(c => c.Naziv == nazivPolja)?.Id ?? 0;
+
                     var noviUnos = new UnosNovaApp
                     {
+                        IdPolja = idPolja,
                         NazivPolja = nazivPolja,
                         Opis = txtOpis.Text.Trim(),
                         Napomena = txtNapomena.Text.Trim()
                     };
 
                     unosPodaci.Add(noviUnos);
+                    trenutni.DodajUnos(noviUnos);
+
+                    // Resetuj UI
                     selektovaniCheckBox.Checked = false;
                     selektovaniCheckBox = null;
                     txtOpis.Clear();
@@ -377,13 +417,14 @@ namespace CheckBoXIndexAPP.Forms
                     btnSledeciUnos.Visible = false;
                 }
 
-                // Sjedinimo sve unose (posto neki dolaze iz trenutnog objekta, neki iz privremene liste)
-                var sviUnosi = new List<UnosNovaApp>();
-                if (trenutni.PoljaUnosi != null)
-                    sviUnosi.AddRange(trenutni.PoljaUnosi);
-                sviUnosi.AddRange(unosPodaci);
+                // 🔹 Dodaj sve privremene unose koji još nisu dodati
+                foreach (var unos in unosPodaci)
+                    trenutni.DodajUnos(unos);
+                unosPodaci.Clear();
 
-                // PROVERA OBAVEZNIH POLJA
+                // 🔹 PROVERA OBAVEZNIH POLJA
+                var sviUnosi = trenutni.PoljaUnosi?.ToList() ?? new List<UnosNovaApp>();
+
                 var obaveznaPolja = configData
                     .Where(c => c.Obavezno)
                     .Select(c => c.Naziv)
@@ -399,7 +440,6 @@ namespace CheckBoXIndexAPP.Forms
                     return;
                 }
 
-                // Provera da ima bar jedan unos
                 if (sviUnosi.Count == 0)
                 {
                     MessageBox.Show("Niste uneli nijedan unos! Morate obraditi bar jedan check box pre čuvanja.",
@@ -407,12 +447,7 @@ namespace CheckBoXIndexAPP.Forms
                     return;
                 }
 
-                // Dodaj sve privremene unose u trenutni PDF (metod DodajUnos spaja ponavljanja)
-                foreach (var unos in unosPodaci)
-                    trenutni.DodajUnos(unos);
-                unosPodaci.Clear();
-
-                // Novi naziv fajla ako je korisnik menjao
+                // 🔹 Novi naziv fajla
                 if (chkMenjajNaziv.Checked && !string.IsNullOrWhiteSpace(txtNoviNaziv.Text))
                 {
                     var novi = txtNoviNaziv.Text.Trim();
@@ -427,93 +462,64 @@ namespace CheckBoXIndexAPP.Forms
 
                 trenutni.DatumObrade = DateTime.Now;
 
-                // Dodaj u zajedničku listu ako već nije tu
+                // 🔹 Dodaj u zajedničku listu
                 if (!pdfFajloviZajednicki.Any(p => p.OriginalPath == trenutni.OriginalPath))
                     pdfFajloviZajednicki.Add(trenutni);
 
-                // Premesti fajl u output folder
+                // 🔹 Premesti fajl i sačuvaj CSV
                 pdfService.PremestiTrenutniPdfUFolder(outputPath);
-
-                // Sačuvaj CSV odmah nakon premještanja
                 csvServis.SacuvajPodatkeUCsv(pdfFajloviZajednicki, imeOperatera);
 
-                // PROVERA: da li u input folderu ima još PDF fajlova
+                // 🔹 Proveri da li ima još PDF-ova u input folderu
                 bool imaJosPdfova = false;
-                try
+                if (!string.IsNullOrWhiteSpace(inputPath) && Directory.Exists(inputPath))
                 {
-                    if (!string.IsNullOrWhiteSpace(inputPath) && Directory.Exists(inputPath))
+                    var files = Directory.GetFiles(inputPath, "*.pdf");
+                    imaJosPdfova = files.Length > 0;
+                }
+
+                if (imaJosPdfova)
+                {
+                    // 🔹 Pređi na sledeći PDF
+                    pdfService.PredjiNaSledeciFajl();
+                    if (pdfService.TrenutniPdf != null)
                     {
-                        var files = Directory.GetFiles(inputPath, "*.pdf");
-                        imaJosPdfova = files != null && files.Length > 0;
+                        pdfService.PrikaziTrenutniFajl(this.pdfPanel);
+                        AzurirajUIPoslePromeneFajla();
+                        return;
                     }
                 }
-                catch
-                {
-                    // ako ne možemo da čitamo folder, fallback na pdfService stanje
-                    imaJosPdfova = pdfService.PdfFajlovi != null && pdfService.PdfFajlovi.Any(p => File.Exists(p.OriginalPath));
-                }
 
-                if (!imaJosPdfova)
-                {
-                    // Nema više fajlova — generiši izveštaj i obavesti korisnika
-                    lblPdfNaziv.Text = "Nema više fajlova";
-                    txtOpis.Visible = false;
-                    txtNapomena.Visible = false;
-                    btnSledeciUnos.Visible = false;
+                // 🔹 Ako nema više PDF-ova — kraj sesije
+                lblPdfNaziv.Text = "Nema više fajlova";
+                txtOpis.Visible = false;
+                txtNapomena.Visible = false;
+                btnSledeciUnos.Visible = false;
 
-                    var izvestajServis = new IzvestajServis(
-                        outputPath,
-                        imeOperatera,
-                        new ConfigData { CheckBoxovi = configData },
-                        pdfFajloviZajednicki,
-                        sessionStartTime);
-                   
+                // 🔹 Generiši izveštaj samo za ovu sesiju
+                var trenutnaSesijaPdf = pdfFajloviZajednicki
+                    .Where(p => p.DatumObrade >= sessionStartTime)
+                    .ToList();
 
-                    izvestajServis.GenerisiIzvestajExcel();
+                var izvestajServis = new IzvestajServis(
+                    outputPath,
+                    imeOperatera,
+                    new ConfigData { CheckBoxovi = configData },
+                    trenutnaSesijaPdf,
+                    sessionStartTime);
 
-                    MessageBox.Show("Nema više PDF fajlova u input folderu.\nIzveštaj je automatski generisan.",
-                                    "Kraj obrade", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                izvestajServis.GenerisiIzvestajExcel();
 
-                    return;
-                }
+                MessageBox.Show("Svi PDF fajlovi iz ove sesije su obrađeni.\nIzveštaj je generisan.",
+                                "Kraj obrade", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-                // Ako ima fajlova, pokušaj da pređemo na sledeći (postupak i prikaz)
-                pdfService.PredjiNaSledeciFajl();
-
-                if (pdfService.TrenutniPdf != null)
-                {
-                    pdfService.PrikaziTrenutniFajl(this.pdfPanel);
-                    AzurirajUIPoslePromeneFajla();
-                }
-                else
-                {
-                    // Fallback: ako pdfService ne vrati sledeći iz nekog razloga, ponovo recheckaj input folder i eventualno generiši izveštaj
-                    bool stillHave = false;
-                    try
-                    {
-                        stillHave = !string.IsNullOrWhiteSpace(inputPath) && Directory.Exists(inputPath) &&
-                                    Directory.GetFiles(inputPath, "*.pdf").Length > 0;
-                    }
-                    catch { }
-
-                    if (!stillHave)
-                    {
-                        lblPdfNaziv.Text = "Nema više fajlova";
-                        var izvestajServis = new IzvestajServis(
-                            outputPath,
-                            imeOperatera,
-                            new ConfigData { CheckBoxovi = configData },
-                            pdfFajloviZajednicki);
-                        izvestajServis.GenerisiIzvestajExcel();
-
-                        MessageBox.Show("Nema više PDF fajlova u input folderu.\nIzveštaj je automatski generisan.",
-                                        "Kraj obrade", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
-                }
+                // 🔹 Automatski zatvori aplikaciju
+                Application.Exit();
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Greška pri čuvanju i prelasku: " + ex.Message, "Greška", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Greška pri čuvanju i prelasku: " + ex.Message,
+                    "Greška", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
         private void chkMenjajNaziv_CheckedChanged(object sender, EventArgs e)

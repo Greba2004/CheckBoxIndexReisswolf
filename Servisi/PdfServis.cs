@@ -14,10 +14,12 @@ namespace CheckBoXIndexAPP.Services
         private List<InputPdfFile> pdfFajlovi = new List<InputPdfFile>();
         private int trenutniIndex = 0;
 
+        private int trenutnaStranica = 1;
+        private int ukupnoStranica = 1;
+
         public List<InputPdfFile> PdfFajlovi => pdfFajlovi;
         public int TrenutniIndex => trenutniIndex;
 
-        // NOVO: property za trenutni PDF fajl
         public InputPdfFile TrenutniPdf
         {
             get
@@ -27,10 +29,10 @@ namespace CheckBoXIndexAPP.Services
                 return null;
             }
         }
+        public PdfViewer PdfViewerInstance => pdfViewer;
+        public int TrenutnaStranica => trenutnaStranica;
 
-        /// <summary>
-        /// Učitaj PDF fajlove iz ulaznog foldera.
-        /// </summary>
+        // Učitaj PDF fajlove iz foldera
         public void UcitajPdfFajlove(string inputFolderPath)
         {
             if (string.IsNullOrEmpty(inputFolderPath) || !Directory.Exists(inputFolderPath))
@@ -40,15 +42,20 @@ namespace CheckBoXIndexAPP.Services
             }
 
             var fajlovi = Directory.GetFiles(inputFolderPath, "*.pdf");
-            pdfFajlovi = fajlovi.Select(f => new InputPdfFile(f)).ToList();
+            pdfFajlovi = fajlovi.Select(f =>
+            {
+                var pdf = new InputPdfFile(f)
+                {
+                    OriginalFileName = Path.GetFileNameWithoutExtension(f)
+                };
+                return pdf;
+            }).ToList();
 
             if (pdfFajlovi.Count == 0)
                 MessageBox.Show("Nema PDF fajlova u izabranom folderu.");
         }
 
-        /// <summary>
-        /// Prikaži trenutni PDF u panelu.
-        /// </summary>
+        // Prikaz PDF-a u panelu
         public void PrikaziTrenutniFajl(Panel panel)
         {
             OslobodiPdfViewer();
@@ -59,9 +66,6 @@ namespace CheckBoXIndexAPP.Services
             OtvoriPdf(TrenutniPdf.OriginalPath, panel);
         }
 
-        /// <summary>
-        /// Otvori PDF u PdfViewer-u.
-        /// </summary>
         private void OtvoriPdf(string putanjaPdf, Panel panel)
         {
             if (string.IsNullOrEmpty(putanjaPdf) || !File.Exists(putanjaPdf))
@@ -69,19 +73,23 @@ namespace CheckBoXIndexAPP.Services
 
             OslobodiPdfViewer();
 
+            var dokument = PdfDocument.Load(putanjaPdf);
             pdfViewer = new PdfViewer
             {
                 Dock = DockStyle.Fill,
-                Document = PdfDocument.Load(putanjaPdf)
+                Document = dokument
             };
+
+            ukupnoStranica = dokument.PageCount;
+            if (trenutnaStranica > ukupnoStranica)
+                trenutnaStranica = 1;
+
+            pdfViewer.Renderer.Page = trenutnaStranica - 1;
 
             panel.Controls.Clear();
             panel.Controls.Add(pdfViewer);
         }
 
-        /// <summary>
-        /// Oslobodi PdfViewer resurse.
-        /// </summary>
         private void OslobodiPdfViewer()
         {
             if (pdfViewer != null)
@@ -92,9 +100,6 @@ namespace CheckBoXIndexAPP.Services
             }
         }
 
-        /// <summary>
-        /// Oslobodi sve PDF resurse i listu fajlova.
-        /// </summary>
         public void OslobodiSvePdfResurse()
         {
             OslobodiPdfViewer();
@@ -102,9 +107,7 @@ namespace CheckBoXIndexAPP.Services
             trenutniIndex = 0;
         }
 
-        /// <summary>
-        /// Premesti trenutni PDF u output folder i ažuriraj putanju.
-        /// </summary>
+        // Premeštanje fajla
         public void PremestiTrenutniPdfUFolder(string outputFolderPath)
         {
             if (TrenutniPdf == null)
@@ -122,7 +125,6 @@ namespace CheckBoXIndexAPP.Services
             if (File.Exists(TrenutniPdf.OriginalPath))
             {
                 OslobodiPdfViewer();
-
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
 
@@ -131,22 +133,34 @@ namespace CheckBoXIndexAPP.Services
             }
         }
 
-        /// <summary>
-        /// Idi na sledeći PDF fajl.
-        /// </summary>
         public void PredjiNaSledeciFajl()
         {
             if (trenutniIndex < pdfFajlovi.Count - 1)
+            {
                 trenutniIndex++;
+                trenutnaStranica = 1;
+            }
         }
 
-        /// <summary>
-        /// Idi na prethodni PDF fajl.
-        /// </summary>
         public void PredjiNaPrethodniFajl()
         {
             if (trenutniIndex > 0)
+            {
                 trenutniIndex--;
+                trenutnaStranica = 1;
+            }
+        }
+
+        // Novi delovi 👇
+        public bool ImaJosStranica()
+        {
+            return trenutnaStranica < ukupnoStranica;
+        }
+
+        public void PredjiNaSledecuStranicu()
+        {
+            if (ImaJosStranica())
+                trenutnaStranica++;
         }
     }
 }

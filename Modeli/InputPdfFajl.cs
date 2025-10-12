@@ -9,6 +9,7 @@ namespace CheckBoXIndexAPP.Modeli
         public string OriginalPath { get; set; }
         public string FileName => Path.GetFileName(OriginalPath);
         public string NewFileName { get; set; }
+        public string OriginalFileName { get; set; }
 
         // Lista unosa iz checkboxova i polja opis/napomena
         public List<UnosNovaApp> PoljaUnosi { get; set; } = new List<UnosNovaApp>();

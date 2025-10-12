@@ -1,5 +1,11 @@
 ﻿using CheckBoXIndexAPP.Modeli;
+using CheckBoXIndexAPP.Servisi;
 using ClosedXML.Excel;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Windows.Forms;
 
 public class IzvestajServis
 {
@@ -14,12 +20,12 @@ public class IzvestajServis
         string operatorName,
         ConfigData configData,
         List<InputPdfFile> pdfFajloviTrenutneSesije,
-        DateTime? sessionStartTime = null) // <-- optional
+        DateTime? sessionStartTime = null)
     {
         this.outputFolderPath = outputFolderPath;
         this.operatorName = operatorName;
         this.configData = configData;
-        this.pdfFajloviTrenutneSesije = pdfFajloviTrenutneSesije;
+        this.pdfFajloviTrenutneSesije = pdfFajloviTrenutneSesije ?? new List<InputPdfFile>();
         this.sessionStartTime = sessionStartTime ?? DateTime.MinValue;
     }
 
@@ -29,105 +35,106 @@ public class IzvestajServis
         {
             var trenutniFajlovi = pdfFajloviTrenutneSesije
                 .Where(p => p.DatumObrade >= sessionStartTime)
+                .OrderBy(p => p.DatumObrade)
                 .ToList();
 
-            if (trenutniFajlovi.Count == 0)
+            if (!trenutniFajlovi.Any())
             {
                 MessageBox.Show("Nema PDF fajlova koji su obrađeni u ovoj sesiji.",
                     "Obaveštenje", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            var workbookPath = Path.Combine(outputFolderPath, "izvestaj.xlsx");
-
             string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
             string archiveFolder = Path.Combine(appDirectory, "SviIzvestaji");
             if (!Directory.Exists(archiveFolder))
                 Directory.CreateDirectory(archiveFolder);
 
-            var workbook = new XLWorkbook();
-            var worksheet = workbook.AddWorksheet("Izvestaj");
+            string workbookPath = Path.Combine(outputFolderPath, "izvestaj.xlsx");
 
-            int red = 1;
-            int kolona = 1;
-
-            // --- HEADER ---
-            worksheet.Cell(red, kolona++).Value = "Stari naziv fajla";
-            worksheet.Cell(red, kolona++).Value = "Novi naziv fajla";
-
-            int maxUnosa = trenutniFajlovi
-                .Where(p => p.PoljaUnosi != null)
-                .Select(p => p.PoljaUnosi.Count)
-                .DefaultIfEmpty(0)
-                .Max();
-
-            for (int i = 1; i <= maxUnosa; i++)
+            using (var workbook = new XLWorkbook())
             {
-                worksheet.Cell(red, kolona++).Value = $"Naziv {i}";
-                worksheet.Cell(red, kolona++).Value = $"Napomena {i}";
-                worksheet.Cell(red, kolona++).Value = $"Opis {i}";
-            }
+                var ws = workbook.AddWorksheet("Izvestaj");
 
-            worksheet.Cell(red, kolona++).Value = "Datum obrade";
-            worksheet.Cell(red, kolona).Value = "Operater";
-            red++;
+                int red = 1;
+                int kolona = 1;
 
-            // --- PODACI ---
-            foreach (var pdf in trenutniFajlovi)
-            {
-                kolona = 1;
-                worksheet.Cell(red, kolona++).Value = pdf.FileName;
-                worksheet.Cell(red, kolona++).Value = string.IsNullOrWhiteSpace(pdf.NewFileName)
-                    ? pdf.FileName
-                    : pdf.NewFileName;
+                // 🔹 Fiksne kolone
+                ws.Cell(red, kolona++).Value = "Stari naziv fajla";
+                ws.Cell(red, kolona++).Value = "Novi naziv fajla";
+                ws.Cell(red, kolona++).Value = "Operater";
+                ws.Cell(red, kolona++).Value = "Datum obrade";
 
-                if (pdf.PoljaUnosi != null && pdf.PoljaUnosi.Count > 0)
+                var checkBoxovi = configData?.CheckBoxovi ?? new List<CheckBoxConfig>();
+                foreach (var cb in checkBoxovi)
                 {
-                    foreach (var unos in pdf.PoljaUnosi)
-                    {
-                        worksheet.Cell(red, kolona++).Value = unos.NazivPolja;
-                        worksheet.Cell(red, kolona++).Value = unos.Napomena;
-                        worksheet.Cell(red, kolona++).Value = unos.Opis;
-                    }
+                    ws.Cell(red, kolona++).Value = $"Naziv {cb.Naziv}";
+                    ws.Cell(red, kolona++).Value = $"Opis {cb.Naziv}";
+                    ws.Cell(red, kolona++).Value = $"Napomena {cb.Naziv}";
                 }
-
-                int praznih = maxUnosa - (pdf.PoljaUnosi?.Count ?? 0);
-                for (int i = 0; i < praznih; i++)
-                {
-                    worksheet.Cell(red, kolona++).Value = "";
-                    worksheet.Cell(red, kolona++).Value = "";
-                    worksheet.Cell(red, kolona++).Value = "";
-                }
-
-                worksheet.Cell(red, kolona++).Value = pdf.DatumObrade.ToString("yyyy-MM-dd HH:mm:ss");
-                worksheet.Cell(red, kolona).Value = operatorName;
 
                 red++;
+
+                // 🔹 Popunjavanje redova po PDF fajlu
+                foreach (var pdf in trenutniFajlovi)
+                {
+                    kolona = 1;
+                    ws.Cell(red, kolona++).Value = pdf.OriginalFileName; // originalni naziv
+                    ws.Cell(red, kolona++).Value = string.IsNullOrWhiteSpace(pdf.NewFileName)
+                        ? pdf.OriginalFileName
+                        : pdf.NewFileName; // novi naziv
+                    ws.Cell(red, kolona++).Value = operatorName;
+                    ws.Cell(red, kolona++).Value = pdf.DatumObrade.ToString("yyyy-MM-dd HH:mm:ss");
+
+                    foreach (var cb in checkBoxovi)
+                    {
+                        var unos = pdf.PoljaUnosi?.FirstOrDefault(u => u.IdPolja == cb.Id);
+                        ws.Cell(red, kolona++).Value = unos?.NazivPolja ?? "";
+                        ws.Cell(red, kolona++).Value = Formatiraj(unos?.Opis);
+                        ws.Cell(red, kolona++).Value = Formatiraj(unos?.Napomena);
+                    }
+
+                    red++;
+                }
+
+                ws.Columns().AdjustToContents();
+                workbook.SaveAs(workbookPath);
+
+                string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                string archivePath = Path.Combine(archiveFolder, $"Izvestaj_{timestamp}.xlsx");
+                workbook.SaveAs(archivePath);
             }
 
-            worksheet.Columns().AdjustToContents();
-            workbook.SaveAs(workbookPath);
-
-            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-            string archiveFileName = $"Izvestaj_{timestamp}.xlsx";
-            string archiveFilePath = Path.Combine(archiveFolder, archiveFileName);
-            workbook.SaveAs(archiveFilePath);
-
-            MessageBox.Show($"Izveštaj za trenutnu sesiju je uspešno generisan.\nKopija je sačuvana u folderu 'SviIzvestaji'.",
+            MessageBox.Show("Izveštaj je uspešno generisan i sačuvan u 'SviIzvestaji'.",
                 "Uspeh", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            try
             {
-                FileName = workbookPath,
-                UseShellExecute = true
-            });
-
-            // Application.Exit(); // <-- preporučujem da ga ukloniš ili da ga pozivaš iz UI samo po potrebi
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = workbookPath,
+                    UseShellExecute = true
+                });
+            }
+            catch { }
         }
         catch (Exception ex)
         {
             MessageBox.Show("Greška pri generisanju izveštaja: " + ex.Message,
                 "Greška", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    private string Formatiraj(string tekst)
+    {
+        if (string.IsNullOrWhiteSpace(tekst))
+            return "";
+
+        var delovi = tekst
+            .Split(new[] { ',', ';', '|', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x));
+
+        return string.Join(" // ", delovi);
     }
 }
